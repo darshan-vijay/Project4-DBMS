@@ -190,7 +190,7 @@ app.get("/pokemon", async (req, res) => {
     // STEP 2: Store the result in Redis with expiration time
     await redisClient.setEx(redisKey, 3600, JSON.stringify(response.data));
     console.log(
-      `Stored ${response.data.length} items in Redis with key: ${redisKey}`
+      `Stored ${response.data.results.length} items in Redis with key: ${redisKey}`
     );
 
     const endTime = Date.now();
