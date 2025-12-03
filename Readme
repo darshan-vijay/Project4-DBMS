@@ -1,0 +1,12 @@
+Use the following commands to run the application.
+
+Make sure your docker daemon is running.
+
+// install dependencies
+npm i
+
+// start containers
+docker-compose up -d
+
+//run the application
+npm run dev
