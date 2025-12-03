@@ -46,26 +46,65 @@ redisClient.on("end", () => {
   console.log("Redis client disconnected");
 });
 
-// Connect to Redis
-(async () => {
+// Start everything in the right order
+async function startServer() {
+  const PORT = 3000;
+
   try {
+    console.log("Starting up...");
+
+    // Connect to Redis first
     await redisClient.connect();
-    console.log("Connection to Redis established");
+    console.log("Redis connected");
+
+    // Then connect to PostgreSQL
+    const conn = await db.connect();
+    console.log("PostgreSQL connected");
+    conn.done();
+
+    // check for games table
+    try {
+      await db.any("SELECT * FROM games LIMIT 1");
+      console.log("Grames table found");
+    } catch (err) {
+      console.warn("Games table not found", err.message);
+    }
+
+    // start app once both Redis and PostgreSQL are connected
+    app
+      .listen(PORT, () => {
+        console.log(`\nServer running on http://localhost:${PORT}`);
+        console.log("\nEndpoints:");
+        console.log("  GET  / - Health Check");
+        console.log(`  GET  /games?genre=Action`);
+        console.log(`  GET  /pokemon?limit=10&offset=0`);
+        console.log(`  GET  /cache/keys`);
+        console.log(`  DEL  /cache\n`);
+      })
+      .on("error", (err) => {
+        if (err.code === "EADDRINUSE") {
+          console.error(`Port ${PORT} is already in use`);
+        } else {
+          console.error("Server error:", err.message);
+        }
+        process.exit(1);
+      });
   } catch (err) {
-    console.error("Connection to Redis failed", err.message);
+    console.error("Failed to start:", err.message);
+
+    if (err.message.includes("Redis")) {
+      console.error("Check Redis Container");
+    }
+
+    if (err.message.includes("database")) {
+      console.error("Check PostgreSQL Container");
+    }
+
     process.exit(1);
   }
-})();
+}
 
-// Connect to PostgreSQL
-db.connect()
-  .then((obj) => {
-    console.log("Connected to PostgreSQL database");
-    obj.done();
-  })
-  .catch((err) => {
-    console.error("Connection to PostgresSQL failed", err.message);
-  });
+startServer();
 
 // Endpoint 1 - /games for fetching games by genre with Redis caching
 app.get("/games", async (req, res) => {
@@ -224,13 +263,21 @@ app.get("/pokemon", async (req, res) => {
   }
 });
 
-// Cache check endpoints
+// utility endpoints
+
+app.get("/", async (req, res) => {
+  console.log("Health check OK");
+  res.json({
+    status: "OK",
+    message: "Server is running",
+  });
+});
 
 // Clear all cache
 app.delete("/cache", async (req, res) => {
   try {
     await redisClient.flushAll();
-    console.log(`[Cache FLUSH] All cache entries cleared`);
+    console.log(`All cache entries cleared`);
 
     res.json({
       success: true,
@@ -262,20 +309,6 @@ app.get("/cache/keys", async (req, res) => {
       message: err.message,
     });
   }
-});
-
-// Start node server
-const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-  console.log("\nAvailable endpoints:");
-  console.log(`  GET  http://localhost:${PORT}/games?genre=Action`);
-  console.log(`  Other options for genre: Adventure, RPG, Strategy, Sports`);
-  console.log(`  GET  http://localhost:${PORT}/pokemon?limit=10&offset=0`);
-  console.log(`  To check cache status:`);
-  console.log(`  GET  http://localhost:${PORT}/cache/keys`);
-  console.log(`  To delete all records in cache:`);
-  console.log(`  DEL  http://localhost:${PORT}/cache`);
 });
 
 // Closing connections on app termination
